@@ -1,112 +1,170 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
-import { FAB, Card, Button, Menu, Divider, Provider } from 'react-native-paper'; // Usaremos react-native-paper para algunos componentes
-import { useNavigation } from '@react-navigation/native';
+import React, { useState } from 'react'; 
+import { View, Text, FlatList, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
+import axios from 'axios';
+import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { Pressable } from 'react-native';
 
-// Define la estructura de los datos de las zonas
+// Definimos el tipo de las rutas en la navegación
+type RootStackParamList = {
+  ZonasRiego: { idUsuario: number };
+  AgregarZona: { idUsuario: number };
+  GestionDispositivos: { idZona: number };  // Añadimos GestionDispositivos
+};
+
+type ZonasRiegoScreenRouteProp = RouteProp<RootStackParamList, 'ZonasRiego'>;
+type ZonasRiegoScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ZonasRiego'>;
+
 interface ZonaRiego {
-  id: number;
+  id_zona: number;
   nombre_zona: string;
-  humedad: number;
-  temperatura: number;
+  ubicacion: string;
+  humedad_min: string;
+  humedad_max: string;
+  temperatura_min: string;
+  temperatura_max: string;
 }
 
-// Pantalla principal para listar las zonas de riego
 const ZonasRiegoScreen: React.FC = () => {
   const [zonasRiego, setZonasRiego] = useState<ZonaRiego[]>([]);
-  const [visible, setVisible] = useState(false);
-  const navigation = useNavigation();
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const navigation = useNavigation<ZonasRiegoScreenNavigationProp>(); // Tipamos useNavigation
+  const route = useRoute<ZonasRiegoScreenRouteProp>(); // Obtener el parámetro idUsuario tipado correctamente
+  const { idUsuario } = route.params; // Obtenemos el idUsuario desde la navegación
 
-  useEffect(() => {
-    // Simulamos la obtención de datos de las zonas de riego (aquí puedes integrar una API)
-    const fetchZonas = async () => {
-      // Aquí deberías hacer la llamada a la API para obtener las zonas del usuario
-      const datosPrueba = [
-        { id: 1, nombre_zona: 'Zona 1', humedad: 45.5, temperatura: 22.1 },
-        { id: 2, nombre_zona: 'Zona 2', humedad: 30.2, temperatura: 19.8 },
-        { id: 3, nombre_zona: 'Zona 3', humedad: 55.0, temperatura: 24.5 },
-      ];
-      setZonasRiego(datosPrueba);
-    };
-    
-    fetchZonas();
-  }, []);
+  // Función para cargar las zonas de riego
+  const fetchZonas = async () => {
+    setLoading(true);  // Mostrar indicador de carga
+    try {
+      const response = await axios.get(`http://192.168.1.145:8000/api/usuarios/${idUsuario}/zonas`);
+      setZonasRiego(response.data);
+    } catch (err) {
+      setError('Error al cargar las zonas de riego');
+    } finally {
+      setLoading(false);  // Ocultar indicador de carga
+    }
+  };
 
-  // Mostrar menú
-  const openMenu = () => setVisible(true);
-  const closeMenu = () => setVisible(false);
+  // Usar useFocusEffect para recargar las zonas cuando se vuelve a la pantalla
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchZonas();
+    }, [idUsuario]) // Se ejecuta cuando cambia idUsuario
+  );
 
-  // Renderiza cada zona en una tarjeta
+  // Mostrar un indicador de carga mientras los datos se están cargando
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#1DB954" />
+      </View>
+    );
+  }
+
+  // Mostrar un mensaje de error si la solicitud falla
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
+  // Función que maneja la navegación a la pantalla de GestionDispositivos
+  const handleZonaPress = (id_zona: number) => {
+    navigation.navigate('GestionDispositivos', { idZona: id_zona });  // Navegar a GestionDispositivos pasando el idZona
+  };
+
+  // Renderizar cada zona de riego en una tarjeta
   const renderZona = ({ item }: { item: ZonaRiego }) => (
-    <Card style={styles.card}>
-      <Card.Title title={item.nombre_zona} />
-      <Card.Content>
-        <Text>Humedad: {item.humedad}%</Text>
-        <Text>Temperatura: {item.temperatura}°C</Text>
-      </Card.Content>
-    </Card>
+    <Pressable onPress={() => handleZonaPress(item.id_zona)}>  
+      <View style={styles.card}>
+        <Text style={styles.title}>{item.nombre_zona}</Text>
+        <Text style={styles.text}>Ubicación: {item.ubicacion}</Text>
+        <Text style={styles.text}>Humedad: {item.humedad_min} - {item.humedad_max}%</Text>
+        <Text style={styles.text}>Temperatura: {item.temperatura_min} - {item.temperatura_max}°C</Text>
+      </View>
+      </Pressable>
   );
 
   return (
-    <Provider>
-      <View style={styles.container}>
-        <View style={styles.menu}>
-          <Menu
-            visible={visible}
-            onDismiss={closeMenu}
-            anchor={
-              <Button onPress={openMenu} icon="menu">Menú</Button>
-            }>
-            <Menu.Item onPress={() => {}} title="Perfil" />
-            <Menu.Item onPress={() => {}} title="Configuraciones" />
-            <Divider />
-            <Menu.Item onPress={() => {}} title="Cerrar sesión" />
-          </Menu>
-        </View>
-
-        <FlatList
-          data={zonasRiego}
-          renderItem={renderZona}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.list}
-        />
-
-        {/* Botón flotante para agregar nueva zona */}
-        <FAB
-          style={styles.fab}
-          small
-          icon="plus"
-          label="Agregar Zona"
-          onPress={() => {
-            navigation.navigate('AgregarZona'); // Aquí iría la navegación a la pantalla de agregar zona
-          }}
-        />
-      </View>
-    </Provider>
+    <View style={styles.container}>
+      <FlatList
+        data={zonasRiego}
+        keyExtractor={(item) => item.id_zona.toString()}
+        renderItem={renderZona}
+      />
+      
+      {/* Botón flotante para agregar una nueva zona */}
+      <TouchableOpacity 
+        style={styles.fab}
+        onPress={() => navigation.navigate('AgregarZona', { idUsuario })} // Pasamos idUsuario a AgregarZona
+      >
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f4f4',
+    backgroundColor: '#121212',
   },
-  list: {
-    padding: 16,
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#121212',
   },
   card: {
-    marginBottom: 16,
+    backgroundColor: '#1C1C1C',
+    padding: 20,
+    marginVertical: 10,
+    marginHorizontal: 20,
+    borderRadius: 10,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 10,
+  },
+  text: {
+    fontSize: 14,
+    color: '#B3B3B3',
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 16,
+  },
+  list: {
+    paddingBottom: 20,
+    backgroundColor: '#121212',
   },
   fab: {
     position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#1DB954',  // Color verde estilo Spotify
+    justifyContent: 'center',
+    alignItems: 'center',
+    right: 20,
+    bottom: 20,
+    elevation: 5,
   },
-  menu: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    margin: 16,
+  fabText: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: 'bold',
   },
 });
 
